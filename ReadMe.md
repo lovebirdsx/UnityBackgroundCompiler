@@ -5,8 +5,8 @@ It's useful for vscode.
 
 ## Usage
 
-Copy content under `UnityAsset` to Unity Project `Asset/Plugins`
-Make sure .netcore 6.0 sdk or runtime is installed
+- Copy content under `UnityAsset` to Unity Project `Asset/Plugins`
+- Make sure .netcore 6.0 sdk or runtime is installed
 
 ## Directory
 
