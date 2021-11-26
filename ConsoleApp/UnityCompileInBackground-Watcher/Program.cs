@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
@@ -8,11 +7,12 @@ namespace UnityCompileInBackground_Watcher {
     public static class Program {
         static int m_waitTime;
         static bool hasSendMessage;
+        static MessageSender sender;
 
         static void Main(string[] args) {
-            var options = new string[] { "-p", "-w" };
+            var options = new string[] { "-path", "-w", "-port" };
             var result = options.ToDictionary(c => c.Substring(1), c => args.SkipWhile(a => a != c).Skip(1).FirstOrDefault());
-            var path = result["p"];
+            var path = result["path"];
 
             m_waitTime = int.Parse(result["w"]);
 
@@ -34,6 +34,9 @@ namespace UnityCompileInBackground_Watcher {
 
             watcher.EnableRaisingEvents = true;
 
+            var port = int.Parse(result["port"]);
+            sender = new MessageSender(port);
+
             while (true) {
                 Thread.Sleep(1000);
             }
@@ -43,15 +46,15 @@ namespace UnityCompileInBackground_Watcher {
             return $"{e.Name}";
         }
 
-        static async void OnChanged(object sender, FileSystemEventArgs e) {
+        static async void OnChanged(object who, FileSystemEventArgs e) {
             await Task.Delay(m_waitTime);
-            Console.WriteLine("OnChanged " + Format(e));
+            sender.Send("OnChanged " + Format(e));
             hasSendMessage = true;
         }
 
-        static async void OnRenamed(object sender, RenamedEventArgs e) {
+        static async void OnRenamed(object who, RenamedEventArgs e) {
             await Task.Delay(m_waitTime);
-            Console.WriteLine("OnRenamed " + Format(e));
+            sender.Send("OnRenamed " + Format(e));
             hasSendMessage = true;
         }
     }
