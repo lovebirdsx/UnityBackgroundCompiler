@@ -98,7 +98,6 @@ namespace lovebird {
         static void StopListen() {
             if (udpClient != null) {
                 if (udpClient.Client.Connected) {
-                    udpClient.Client.Disconnect(true);
                     udpClient.Client.Shutdown(SocketShutdown.Both);
                 }
                 udpClient.Close();
