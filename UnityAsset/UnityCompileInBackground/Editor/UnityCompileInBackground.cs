@@ -7,6 +7,7 @@ using System.Threading;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Debug = UnityEngine.Debug;
+using UnityEditor.Compilation;
 
 namespace lovebird {
 
@@ -17,11 +18,31 @@ namespace lovebird {
 
         static ConcurrentQueue<string> messages = new ConcurrentQueue<string>();
         static double lastCompileTime;
+        static Thread listenThread;
+        static UdpClient udpClient;
+        static double watcherCheckTime;
+        static bool watcherChecked;
 
         [InitializeOnLoadMethod]
         static void Start() {
             RunWatcher();
-            Listen();
+            StopListen();
+            StartListen();
+        }
+
+        [MenuItem("Tools/" + nameof(UnityCompileInBackground) + "/" + nameof(TestSendMessage))]
+        static void TestSendMessage() {
+            var udpClient = new UdpClient();
+            udpClient.Connect("127.0.0.1", Port);
+            var data = Encoding.ASCII.GetBytes("Test from UnityCompileInBackground");
+            udpClient.Send(data, data.Length);
+        }
+
+        [MenuItem("Tools/" + nameof(UnityCompileInBackground) + "/" + nameof(RestartListen))]
+        static void RestartListen() {
+            StopListen();
+            StartListen();
+            Debug.Log($"UnityCompileInBackground running on port {Port}");
         }
 
         [MenuItem("Tools/" + nameof(UnityCompileInBackground) + "/" + nameof(RestartWatcherProcess))]
@@ -60,18 +81,44 @@ namespace lovebird {
             }
 
             var process = CreateWatcherProcess();
+            watcherCheckTime = EditorApplication.timeSinceStartup + 2;
             Debug.Log($"Watcher process started [{process.Id}]");
-            EditorApplication.quitting += () => {
-                process.Kill();
-                process.Dispose();
-            };
         }
 
-        static void Listen() {
-            var thread = new Thread(Run);
-            thread.Start();
+        static void StartListen() {
+            listenThread = new Thread(Run);
+            listenThread.Start();
             // Debug.Log($"UnityCompileInBackground running on port {Port}");
+
             EditorApplication.update += OnEditorUpdate;
+            EditorApplication.quitting += KillExistWatcherProcess;
+            CompilationPipeline.assemblyCompilationStarted += OnCompilationStarted;
+        }
+
+        static void StopListen() {
+            if (udpClient != null) {
+                if (udpClient.Client.Connected) {
+                    udpClient.Client.Disconnect(true);
+                    udpClient.Client.Shutdown(SocketShutdown.Both);
+                }
+                udpClient.Close();
+                udpClient.Dispose();
+                udpClient = null;
+            }
+
+            if (listenThread != null) {
+                listenThread.Abort();
+                listenThread.Join();
+                listenThread = null;
+            }
+
+            EditorApplication.update -= OnEditorUpdate;
+            EditorApplication.quitting -= KillExistWatcherProcess;
+            CompilationPipeline.assemblyCompilationStarted -= OnCompilationStarted;
+        }
+
+        static void OnCompilationStarted(string obj) {
+            StopListen();
         }
 
         static void TryRecompile(string msg) {
@@ -91,23 +138,38 @@ namespace lovebird {
         }
 
         static void OnEditorUpdate() {
+            if (!watcherChecked) {
+                if (EditorApplication.timeSinceStartup > watcherCheckTime) {
+                    CheckWatcherExist();
+                    watcherChecked = true;
+                }
+            }
+
             if (messages.TryDequeue(out var msg)) {
                 if (msg.Contains("OnChanged") || msg.Contains("OnRenamed")) {
                     TryRecompile(msg);
+                } else if (msg.Contains("Test")) {
+                    Debug.Log(msg);
                 } else {
                     Debug.LogWarning($"Unsuporrted msg {msg}");
                 }
             }
         }
 
+        static void CheckWatcherExist() {
+            if (!IsExistWatcherProcess()) {
+                Debug.LogError($"Watcher process start failed, please check your .net runtime is 6.0");
+            }
+        }
+
         static void Run() {
             byte[] data = new byte[1024];
-            IPEndPoint endpoint = new IPEndPoint(IPAddress.Any, Port);
-            UdpClient newsock = new UdpClient(endpoint);
-            IPEndPoint sender = new IPEndPoint(IPAddress.Any, 0);
+            var endpoint = new IPEndPoint(IPAddress.Any, Port);
+            udpClient = new UdpClient(endpoint);
+            var sender = new IPEndPoint(IPAddress.Any, 0);
 
             while (true) {
-                data = newsock.Receive(ref sender);
+                data = udpClient.Receive(ref sender);
                 var msg = Encoding.ASCII.GetString(data, 0, data.Length);
                 messages.Enqueue(msg);
             }
