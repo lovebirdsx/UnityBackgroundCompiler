@@ -10,8 +10,7 @@ namespace lovebird {
         const string ConsoleAppPath = @"Plugins/UnityCompileInBackground/Editor/" + ProcessName + ".exe";
         const int minRefreshInterval = 5;
         static Process process;
-        static bool isRefresh;
-        static double lastRefreshTime;
+        static bool needRefresh;
 
         static void KillExistWatcherProcess() {
             var processes = Process.GetProcessesByName(ProcessName);
@@ -56,23 +55,10 @@ namespace lovebird {
             process.BeginOutputReadLine();
 
             EditorApplication.update += OnUpdate;
-            EditorApplication.quitting += OnQuit;
-        }
-
-        static void OnQuit() {
-            if (process == null){
-                return;
-            } 
-
-            if (!process.HasExited) {
-                process.Kill();
-            }
-            process.Dispose();
-            process = null;
         }
 
         static void OnUpdate() {
-            if (!isRefresh) {
+            if (!needRefresh) {
 				return;
 			}
 
@@ -84,14 +70,10 @@ namespace lovebird {
 				return;
 			}
 
-            isRefresh = false;
-
             var now = EditorApplication.timeSinceStartup;
-            if (now - lastRefreshTime > minRefreshInterval) {
-                lastRefreshTime = now;
-                AssetDatabase.Refresh();
-                Debug.Log($"[UnityCompileInBackground] Compiling time = {EditorApplication.timeSinceStartup - now:0.##}s");
-            }
+            AssetDatabase.Refresh();
+            Debug.Log($"[UnityCompileInBackground] Compiling time = {EditorApplication.timeSinceStartup - now:0.##}s");
+            needRefresh = false;
         }
 
         static void OnReceived(object sender, DataReceivedEventArgs e) {
@@ -105,7 +87,7 @@ namespace lovebird {
 #else
             if (message.Contains("OnChanged") || message.Contains("OnRenamed")) {
                 Debug.Log($"Receive message {e.Data}");
-                isRefresh = true;
+                needRefresh = true;
             }
 #endif
         }
