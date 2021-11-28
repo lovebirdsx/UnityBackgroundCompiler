@@ -41,7 +41,6 @@ namespace lovebird {
         static void RestartListen() {
             StopListen();
             StartListen();
-            Debug.Log($"UnityCompileInBackground running on port {Port}");
         }
 
         [MenuItem("Tools/" + nameof(UnityCompileInBackground) + "/" + nameof(RestartWatcherProcess))]
@@ -85,7 +84,7 @@ namespace lovebird {
         }
 
         static void StartListen() {
-            listenThread = new Thread(ListenThread);
+            listenThread = new Thread(RecvMessageThread);
             listenThread.Start();
 
             // Debug.Log($"UnityCompileInBackground running on port {Port}");
@@ -163,7 +162,8 @@ namespace lovebird {
             }
         }
 
-        static void ListenThread() {
+        static void RecvMessageThread() {
+            // Maybe the watcher process is not ready, wait a bit
             Thread.Sleep(100);
 
             var endpoint = new IPEndPoint(IPAddress.Loopback, Port);
@@ -175,16 +175,13 @@ namespace lovebird {
 
             var sender = new IPEndPoint(IPAddress.Any, 0);
             while (true) {
-                // ListenThread can be abort by StopListen()
-                // So ignore the ThreadAbortException
+                // ListenThread can be abort by StopListen(), then exit the loop
                 try {
                     data = udpClient.Receive(ref sender);
-                    if (sender.Port == Port) {
-                        var msg = Encoding.ASCII.GetString(data, 0, data.Length);
-                        messages.Enqueue(msg);
-                    }
+                    var msg = Encoding.ASCII.GetString(data, 0, data.Length);
+                    messages.Enqueue(msg);
                 } catch (System.Threading.ThreadAbortException) {
-                    
+                    break;
                 }
             }
         }
