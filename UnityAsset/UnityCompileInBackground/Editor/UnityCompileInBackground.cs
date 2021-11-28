@@ -7,7 +7,7 @@ using System.Threading;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Debug = UnityEngine.Debug;
-using UnityEditor.Compilation;
+using System;
 
 namespace lovebird {
 
@@ -26,7 +26,6 @@ namespace lovebird {
         [InitializeOnLoadMethod]
         static void Start() {
             RunWatcher();
-            StopListen();
             StartListen();
         }
 
@@ -86,20 +85,18 @@ namespace lovebird {
         }
 
         static void StartListen() {
-            listenThread = new Thread(Run);
+            listenThread = new Thread(ListenThread);
             listenThread.Start();
+
             // Debug.Log($"UnityCompileInBackground running on port {Port}");
 
             EditorApplication.update += OnEditorUpdate;
-            EditorApplication.quitting += KillExistWatcherProcess;
-            CompilationPipeline.assemblyCompilationStarted += OnCompilationStarted;
+            EditorApplication.quitting += OnEditorQuitting;
+            AppDomain.CurrentDomain.DomainUnload += OnAppDomainUnload;
         }
 
         static void StopListen() {
             if (udpClient != null) {
-                if (udpClient.Client.Connected) {
-                    udpClient.Client.Shutdown(SocketShutdown.Both);
-                }
                 udpClient.Close();
                 udpClient.Dispose();
                 udpClient = null;
@@ -112,12 +109,8 @@ namespace lovebird {
             }
 
             EditorApplication.update -= OnEditorUpdate;
-            EditorApplication.quitting -= KillExistWatcherProcess;
-            CompilationPipeline.assemblyCompilationStarted -= OnCompilationStarted;
-        }
-
-        static void OnCompilationStarted(string obj) {
-            StopListen();
+            EditorApplication.quitting -= OnEditorQuitting;
+            AppDomain.CurrentDomain.DomainUnload -= OnAppDomainUnload;
         }
 
         static void TryRecompile(string msg) {
@@ -132,7 +125,7 @@ namespace lovebird {
             if (EditorApplication.timeSinceStartup - lastCompileTime > 5) {
                 lastCompileTime = EditorApplication.timeSinceStartup;
                 AssetDatabase.Refresh();
-                Debug.Log($"Compiling: [{msg}]");
+                Debug.Log($"Compiling for: [{msg}]");
             }
         }
 
@@ -155,22 +148,44 @@ namespace lovebird {
             }
         }
 
+        static void OnAppDomainUnload(object sender, EventArgs e) {
+            StopListen();
+        }
+
+        static void OnEditorQuitting() {
+            StopListen();
+            KillExistWatcherProcess();
+        }
+
         static void CheckWatcherExist() {
             if (!IsExistWatcherProcess()) {
                 Debug.LogError($"Watcher process start failed, please check your .net runtime is 6.0");
             }
         }
 
-        static void Run() {
-            byte[] data = new byte[1024];
-            var endpoint = new IPEndPoint(IPAddress.Any, Port);
-            udpClient = new UdpClient(endpoint);
-            var sender = new IPEndPoint(IPAddress.Any, 0);
+        static void ListenThread() {
+            Thread.Sleep(100);
 
+            var endpoint = new IPEndPoint(IPAddress.Loopback, Port);
+            udpClient = new UdpClient();
+            udpClient.Connect(endpoint);
+            
+            var data = Encoding.ASCII.GetBytes("Request");
+            udpClient.Send(data, data.Length);
+
+            var sender = new IPEndPoint(IPAddress.Any, 0);
             while (true) {
-                data = udpClient.Receive(ref sender);
-                var msg = Encoding.ASCII.GetString(data, 0, data.Length);
-                messages.Enqueue(msg);
+                // ListenThread can be abort by StopListen()
+                // So ignore the ThreadAbortException
+                try {
+                    data = udpClient.Receive(ref sender);
+                    if (sender.Port == Port) {
+                        var msg = Encoding.ASCII.GetString(data, 0, data.Length);
+                        messages.Enqueue(msg);
+                    }
+                } catch (System.Threading.ThreadAbortException) {
+                    
+                }
             }
         }
     }

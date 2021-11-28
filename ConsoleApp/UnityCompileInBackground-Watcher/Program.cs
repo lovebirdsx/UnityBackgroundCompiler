@@ -1,7 +1,6 @@
 ﻿using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Threading;
 
 namespace UnityCompileInBackground_Watcher {
     public static class Program {
@@ -36,10 +35,7 @@ namespace UnityCompileInBackground_Watcher {
 
             var port = int.Parse(result["port"]);
             sender = new MessageSender(port);
-
-            while (true) {
-                Thread.Sleep(1000);
-            }
+            sender.Listen();
         }
 
         static string Format(FileSystemEventArgs e) {
