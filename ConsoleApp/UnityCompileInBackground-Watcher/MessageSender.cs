@@ -24,8 +24,9 @@ namespace UnityCompileInBackground_Watcher {
                         remote = sender;
                         Console.WriteLine($"{remote} Connected");
                     }
-                }
-                catch (System.Exception e) {
+                } catch (SocketException) {
+                    // Ignore socket exception
+                } catch (System.Exception e) {
                     Console.WriteLine(e);
                 }
             }

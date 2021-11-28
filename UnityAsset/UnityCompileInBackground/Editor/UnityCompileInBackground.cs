@@ -1,16 +1,16 @@
-﻿using System.Net;
-using System.Net.Sockets;
-using System.Text;
-using UnityEngine;
-using UnityEditor;
-using System.Threading;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+
+using UnityEngine;
+using UnityEditor;
 using Debug = UnityEngine.Debug;
-using System;
 
 namespace lovebird {
-
     public static class UnityCompileInBackground {
         const string ProcessName = "UnityCompileInBackground-Watcher";
         const string ConsoleAppPath = @"Plugins/UnityCompileInBackground/Editor/" + ProcessName + ".exe";
@@ -52,8 +52,7 @@ namespace lovebird {
         static Process CreateWatcherProcess() {
             var process = Process.Start(new ProcessStartInfo {
                 FileName = Application.dataPath + "/" + ConsoleAppPath,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
+                UseShellExecute = true,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
                 Arguments = @$"-path ""{Application.dataPath}"" -port ""{Port}"" -w 0",
@@ -84,11 +83,6 @@ namespace lovebird {
         }
 
         static void StartListen() {
-            listenThread = new Thread(RecvMessageThread);
-            listenThread.Start();
-
-            // Debug.Log($"UnityCompileInBackground running on port {Port}");
-
             EditorApplication.update += OnEditorUpdate;
             EditorApplication.quitting += OnEditorQuitting;
             AppDomain.CurrentDomain.DomainUnload += OnAppDomainUnload;
@@ -145,6 +139,11 @@ namespace lovebird {
                     Debug.LogWarning($"Unsuporrted msg {msg}");
                 }
             }
+
+            if (listenThread == null || !listenThread.IsAlive) {
+                listenThread = new Thread(RecvMessageThread);
+                listenThread.Start();
+            }
         }
 
         static void OnAppDomainUnload(object sender, EventArgs e) {
@@ -168,22 +167,23 @@ namespace lovebird {
 
             var endpoint = new IPEndPoint(IPAddress.Loopback, Port);
             udpClient = new UdpClient();
-            udpClient.Connect(endpoint);
             
             var data = Encoding.ASCII.GetBytes("Request");
-            udpClient.Send(data, data.Length);
+            udpClient.Send(data, data.Length, endpoint);
 
             var sender = new IPEndPoint(IPAddress.Any, 0);
-            while (true) {
-                // ListenThread can be abort by StopListen(), then exit the loop
-                try {
-                    data = udpClient.Receive(ref sender);
-                    var msg = Encoding.ASCII.GetString(data, 0, data.Length);
-                    messages.Enqueue(msg);
-                } catch (System.Threading.ThreadAbortException) {
-                    break;
-                }
+            
+            // ListenThread can be abort by StopListen(), then exit the loop
+            try {
+                data = udpClient.Receive(ref sender);
+                var msg = Encoding.ASCII.GetString(data, 0, data.Length);
+                messages.Enqueue(msg);
+            } catch (System.Threading.ThreadAbortException) {
+                
             }
+            udpClient.Close();
+            udpClient.Dispose();
+            udpClient = null;
         }
     }
 }
