@@ -11,6 +11,7 @@ namespace UnityCompileInBackground_Watcher {
         public MessageSender(int dstPort) {
             IPEndPoint endpoint = new IPEndPoint(IPAddress.Loopback, dstPort);
             udpClient = new UdpClient(endpoint);
+            Console.WriteLine($"Listen at {endpoint}");
         }
 
         public void Listen() {
@@ -21,6 +22,7 @@ namespace UnityCompileInBackground_Watcher {
                     var msg = Encoding.ASCII.GetString(data, 0, data.Length);
                     if (msg == "Request") {
                         remote = sender;
+                        Console.WriteLine($"{remote} Connected");
                     }
                 }
                 catch (System.Exception e) {
@@ -36,6 +38,7 @@ namespace UnityCompileInBackground_Watcher {
 
             var bytes = Encoding.ASCII.GetBytes(msg);
             udpClient.Send(bytes, bytes.Length, remote);
+            Console.WriteLine($"Send {remote}: {msg}");
         }
 
         public void Dispose() {
